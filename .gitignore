@@ -1,0 +1,4 @@
+FSM_OBS
+*.o
+*.out
+build/

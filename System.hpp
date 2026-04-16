@@ -16,8 +16,13 @@ public:
     void setState(IState* newState) { currentState = newState; }
     void addObserver(IObserver* obs) { observers.push_back(obs); }
 
-    void notify(int value) {
-        for (auto* obs : observers) obs->onUpdate(value);
+    void notify(int value, Topic topic) {
+        for (auto* obs : observers) {
+        // Solo notificamos si el observador está interesado en este tópico
+            if (obs->getInterest() == topic) {
+                obs->onUpdate(value,topic);
+            }
+        }
     }
 
     // Método para que los estados obtengan datos del hardware

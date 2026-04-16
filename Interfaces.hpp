@@ -3,6 +3,13 @@
 // Interfaz Estado
 class SystemContext; // Forward declaration
 
+enum class Topic {
+    SENSOR_DATA,
+    SYSTEM_STATUS,
+    ALARM_EVENT
+};
+
+
 // Interfaz para el Sensor (HAL)
 class ISensor {
 public:
@@ -18,7 +25,8 @@ public:
     virtual ~IObserver() = default;
     //código que se ejecuta "por suscripción" cuando algo importante sucede.
     //=0 boliga al que hereda a implementarla -> sino no va compilar
-    virtual void onUpdate(int data) = 0;
+    virtual void onUpdate(int data,Topic topic) = 0;
+    virtual Topic getInterest() = 0; // Filtro de interés
 };
 
 /*

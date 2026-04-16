@@ -15,11 +15,21 @@ public:
     int readValue() override { return dis(gen); }
 };
 
-// --- CAPA DE COMUNICACIÓN (OBSERVER) ---
-class SerialLogger : public IObserver {
+
+// --- OBSERVADORES ACTUALIZADOS ---
+class TelemetryLogger : public IObserver {
 public:
-    void onUpdate(int data) override {
-        std::cout << "[Logger] Dato del Sensor: " << data << "°C" << std::endl;
+    Topic getInterest() override { return Topic::SENSOR_DATA; }
+    void onUpdate(int data, Topic topic) override {
+        std::cout << "[LOG] Sensor: " << data << "°C (Tópico: Telemetría)" << std::endl;
+    }
+};
+
+class EmergencyBuzzer : public IObserver {
+public:
+    Topic getInterest() override { return Topic::ALARM_EVENT; }
+    void onUpdate(int data, Topic topic) override {
+        std::cout << "!!! [BUZZER] BEEP BEEP! Umbral Crítico: " << data << " !!!" << std::endl;
     }
 };
 
@@ -29,45 +39,54 @@ static AlarmState estadoAlarma;
 
 // --- LÓGICA DE ESTADOS (FSM) ---
 void NormalState::execute(SystemContext& ctx) {
-    int valor = ctx.readSensor(); // Lee del HAL
-    ctx.notify(valor);           // Notifica a Observers
+    int valor = ctx.readSensor(); 
 
+    // 1. SIEMPRE notificamos telemetría (el dato debe registrarse sea cual sea)
+    ctx.notify(valor, Topic::SENSOR_DATA);
+
+    // 2. Evaluamos si ADEMÁS es una emergencia
     if (valor > 32) {
-        std::cout << ">> CAMBIO: Umbral crítico detectado." << std::endl;
+        std::cout << ">> [SISTEMA] Umbral crítico detectado (" << valor << "). Cambiando a ALARMA..." << std::endl;
         ctx.setState(&estadoAlarma);
+        
+        // 3. Notificación EXTRA para el canal de pánico
+        ctx.notify(valor, Topic::ALARM_EVENT); 
     }
 }
 
 void AlarmState::execute(SystemContext& ctx) {
     int valor = ctx.readSensor(); 
-    std::cout << "!!! MODO ALARMA ACTIVO !!!" << std::endl;
-    ctx.notify(valor);
 
-    if (valor <= 32) {
-        std::cout << ">> CAMBIO: Sistema estabilizado." << std::endl;
+    // Telemetría siempre activa
+    ctx.notify(valor, Topic::SENSOR_DATA);
+
+    if (valor > 32) {
+        // Sigue el peligro: notificamos al canal de pánico
+        ctx.notify(valor, Topic::ALARM_EVENT); 
+    } else {
+        // Bajó la temperatura: no enviamos ALARM_EVENT, solo cambiamos estado
+        std::cout << ">> [SISTEMA] Temperatura normalizada. Volviendo a NORMAL..." << std::endl;
         ctx.setState(&estadoNormal);
     }
 }
 
 // --- PUNTO DE ENTRADA ---
 int main() {
-    // 1. Creamos el hardware (HAL)
-    MockSensor sensorSimulado;
-
-    // 2. Iniciamos el sistema inyectando el sensor
-    SystemContext machine(&estadoNormal, &sensorSimulado);
+    MockSensor sensor;
+    SystemContext machine(&estadoNormal, &sensor);
     
-    // 3. Agregamos suscriptores
-    SerialLogger logger;
+    TelemetryLogger logger;
+    EmergencyBuzzer buzzer;
+    
     machine.addObserver(&logger);
+    machine.addObserver(&buzzer);
 
-    std::cout << "=== FIRMWARE INDUSTRIAL v1.0 INICIADO ===" << std::endl;
+    std::cout << "=== FIRMWARE V4.0 (TOPICS) INICIADO ===" << std::endl;
 
     for(int i = 0; i < 10; i++) {
-        std::cout << "\nCiclo: " << i << " | Estado: " << machine.getStateName() << std::endl;
+        std::cout << "\nCiclo: " << i << " [" << machine.getStateName() << "]" << std::endl;
         machine.run();
         std::this_thread::sleep_for(std::chrono::milliseconds(600));
     }
-
     return 0;
 }
